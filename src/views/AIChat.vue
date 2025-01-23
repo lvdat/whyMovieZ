@@ -1,6 +1,6 @@
 <template>
     <div class="container mx-auto p-4 h-screen flex flex-col">
-      <h1 class="text-2xl font-bold mb-4 dark:text-white">AI Chat</h1>
+      <h1 class="text-2xl font-bold mb-4 dark:text-white">AI Chat (Gemini 2.0 Flash Experimental)</h1>
       <div class="flex-1 overflow-y-auto mb-4">
         <div v-for="(message, index) in messages" :key="index" class="mb-4">
           <div v-if="message.role === 'user'" class="flex justify-end">
@@ -39,11 +39,16 @@
   <script setup>
   import { ref } from 'vue';
   import { marked } from 'marked';
+  import { GoogleGenerativeAI } from '@google/generative-ai';
   
   const inputMessage = ref('');
   const messages = ref([]);
   const isTyping = ref(false); // Trạng thái AI đang nhập
   const streamedText = ref(''); // Nội dung đang được stream
+  
+  // Khởi tạo Gemini API
+  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY); // Thay YOUR_GOOGLE_API_KEY bằng key của bạn
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
   
   // Hàm chuyển đổi Markdown thành HTML
   const renderMarkdown = (text) => {
@@ -64,44 +69,14 @@
     streamedText.value = ''; // Reset nội dung stream
   
     try {
-      const response = await fetch('https://api.aimlapi.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_AIMLAPI_KEY}`, // Thay YOUR_DEEPSEEK_API_KEY bằng key của bạn
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o', // Model bạn muốn sử dụng
-          messages: [{ role: 'user', content: userMessage }],
-          stream: true, // Bật chế độ stream
-        }),
-      });
+      // Gọi API Gemini với chế độ stream
+      const result = await model.generateContentStream(userMessage);
+      let fullResponse = '';
   
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-  
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-  
-        // Giải mã dữ liệu nhận được
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-  
-        for (const line of lines) {
-          if (line.trim() === '') continue;
-  
-          try {
-            const json = JSON.parse(line.replace('data: ', ''));
-            const content = json.choices[0].delta.content;
-  
-            if (content) {
-              streamedText.value += content; // Thêm từng ký tự vào nội dung stream
-            }
-          } catch (error) {
-            console.error('Lỗi khi phân tích dữ liệu:', error);
-          }
-        }
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        fullResponse += chunkText;
+        streamedText.value = fullResponse; // Cập nhật nội dung stream
       }
     } catch (error) {
       console.error('Lỗi khi gửi tin nhắn:', error);
