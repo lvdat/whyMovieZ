@@ -5,12 +5,21 @@
         <div v-for="(message, index) in messages" :key="index" class="mb-4">
           <div v-if="message.role === 'user'" class="flex justify-end">
             <div class="bg-blue-500 text-white p-3 rounded-lg max-w-[70%]">
-              {{ message.content }}
+              <div v-html="renderMarkdown(message.content)" class="prose"></div>
             </div>
           </div>
           <div v-else class="flex justify-start">
             <div class="bg-gray-200 dark:bg-gray-700 p-3 rounded-lg max-w-[70%]">
-              {{ message.content }}
+              <div v-html="renderMarkdown(message.content)" class="prose"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Hiển thị animation khi AI đang nhập -->
+        <div v-if="isTyping" class="flex justify-start">
+          <div class="bg-gray-200 dark:bg-gray-700 p-3 rounded-lg max-w-[70%]">
+            <div class="flex items-center">
+              <span class="mr-2">AI đang nhập...</span>
+              <div class="dot-flashing"></div>
             </div>
           </div>
         </div>
@@ -33,9 +42,16 @@
   <script setup>
   import { ref } from 'vue';
   import axios from 'axios';
+  import { marked } from 'marked'; // Thêm thư viện marked
   
   const inputMessage = ref('');
   const messages = ref([]);
+  const isTyping = ref(false); // Trạng thái AI đang nhập
+  
+  // Hàm chuyển đổi Markdown thành HTML
+  const renderMarkdown = (text) => {
+    return marked(text);
+  };
   
   const sendMessage = async () => {
     if (!inputMessage.value.trim()) return;
@@ -46,6 +62,8 @@
     // Gửi tin nhắn đến API
     const userMessage = inputMessage.value;
     inputMessage.value = ''; // Xóa input sau khi gửi
+  
+    isTyping.value = true; // Bắt đầu hiển thị animation "AI đang nhập..."
   
     try {
       const response = await axios.post(
@@ -67,14 +85,80 @@
     } catch (error) {
       console.error('Lỗi khi gửi tin nhắn:', error);
       messages.value.push({ role: 'assistant', content: 'Đã xảy ra lỗi. Vui lòng thử lại sau.' });
+    } finally {
+      isTyping.value = false; // Tắt animation "AI đang nhập..."
     }
   };
   </script>
   
   <style>
-  /* Tùy chỉnh giao diện */
-  .container {
-    max-width: 800px;
-    margin: 0 auto;
+  /* Animation "AI đang nhập..." */
+  .dot-flashing {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #6b7280;
+    color: #6b7280;
+    animation: dot-flashing 1s infinite linear alternate;
+    animation-delay: 0.5s;
+  }
+  .dot-flashing::before, .dot-flashing::after {
+    content: '';
+    display: inline-block;
+    position: absolute;
+    top: 0;
+  }
+  .dot-flashing::before {
+    left: -15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #6b7280;
+    color: #6b7280;
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 0s;
+  }
+  .dot-flashing::after {
+    left: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #6b7280;
+    color: #6b7280;
+    animation: dot-flashing 1s infinite alternate;
+    animation-delay: 1s;
+  }
+  @keyframes dot-flashing {
+    0% {
+      background-color: #6b7280;
+    }
+    50%, 100% {
+      background-color: rgba(107, 114, 128, 0.2);
+    }
+  }
+  
+  /* Tùy chỉnh giao diện Markdown */
+  .prose {
+    max-width: 100%;
+    word-wrap: break-word;
+  }
+  .prose h1, .prose h2, .prose h3 {
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+  }
+  .prose p {
+    margin-bottom: 1em;
+  }
+  .prose code {
+    background-color: rgba(107, 114, 128, 0.1);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+  }
+  .prose pre {
+    background-color: rgba(107, 114, 128, 0.1);
+    padding: 1em;
+    border-radius: 4px;
+    overflow-x: auto;
   }
   </style>
