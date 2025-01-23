@@ -14,13 +14,10 @@
             </div>
           </div>
         </div>
-        <!-- Hiển thị animation khi AI đang nhập -->
+        <!-- Hiển thị tin nhắn đang được stream -->
         <div v-if="isTyping" class="flex justify-start">
           <div class="bg-gray-200 dark:bg-gray-700 p-3 rounded-lg max-w-[70%]">
-            <div class="flex items-center">
-              <span class="mr-2">AI đang nhập...</span>
-              <div class="dot-flashing"></div>
-            </div>
+            <div v-html="renderMarkdown(streamedText)" class="prose"></div>
           </div>
         </div>
       </div>
@@ -41,12 +38,12 @@
   
   <script setup>
   import { ref } from 'vue';
-  import axios from 'axios';
-  import { marked } from 'marked'; // Thêm thư viện marked
+  import { marked } from 'marked';
   
   const inputMessage = ref('');
   const messages = ref([]);
   const isTyping = ref(false); // Trạng thái AI đang nhập
+  const streamedText = ref(''); // Nội dung đang được stream
   
   // Hàm chuyển đổi Markdown thành HTML
   const renderMarkdown = (text) => {
@@ -63,30 +60,60 @@
     const userMessage = inputMessage.value;
     inputMessage.value = ''; // Xóa input sau khi gửi
   
-    isTyping.value = true; // Bắt đầu hiển thị animation "AI đang nhập..."
+    isTyping.value = true; // Bắt đầu hiển thị trạng thái "AI đang nhập..."
+    streamedText.value = ''; // Reset nội dung stream
   
     try {
-      const response = await axios.post(
-        'https://api.aimlapi.com/chat/completions',
-        {
-          model: 'gpt-4o', // Hoặc model bạn muốn sử dụng
-          messages: [{ role: 'user', content: userMessage }],
+      const response = await fetch('https://api.aimlapi.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_AIMLAPI_KEY}`, // Thay YOUR_DEEPSEEK_API_KEY bằng key của bạn
+          'Content-Type': 'application/json',
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_AIMLAPI_KEY}`, // Thay YOUR_AIMLAPI_KEY bằng key của bạn
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+        body: JSON.stringify({
+          model: 'gpt-4o', // Model bạn muốn sử dụng
+          messages: [{ role: 'user', content: userMessage }],
+          stream: true, // Bật chế độ stream
+        }),
+      });
   
-      // Thêm phản hồi từ AI vào danh sách
-      messages.value.push({ role: 'assistant', content: response.data.choices[0].message.content });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+  
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+  
+        // Giải mã dữ liệu nhận được
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+  
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+  
+          try {
+            const json = JSON.parse(line.replace('data: ', ''));
+            const content = json.choices[0].delta.content;
+  
+            if (content) {
+              streamedText.value += content; // Thêm từng ký tự vào nội dung stream
+            }
+          } catch (error) {
+            console.error('Lỗi khi phân tích dữ liệu:', error);
+          }
+        }
+      }
     } catch (error) {
       console.error('Lỗi khi gửi tin nhắn:', error);
       messages.value.push({ role: 'assistant', content: 'Đã xảy ra lỗi. Vui lòng thử lại sau.' });
     } finally {
-      isTyping.value = false; // Tắt animation "AI đang nhập..."
+      isTyping.value = false; // Tắt trạng thái "AI đang nhập..."
+  
+      // Thêm nội dung đã stream vào danh sách tin nhắn
+      if (streamedText.value) {
+        messages.value.push({ role: 'assistant', content: streamedText.value });
+        streamedText.value = ''; // Reset nội dung stream
+      }
     }
   };
   </script>
